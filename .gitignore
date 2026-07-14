@@ -1,0 +1,5 @@
+config.json
+*.sqlite3
+*_cache.json
+__pycache__/
+.env

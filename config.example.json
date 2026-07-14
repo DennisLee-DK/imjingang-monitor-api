@@ -1,0 +1,40 @@
+{
+  "poll_interval_seconds": 600,
+  "retention_days": 30,
+  "sources": {
+    "hfc": {
+      "name": "\ud55c\uac15\ud64d\uc218\ud1b5\uc81c\uc18c \ud45c\uc900\uc218\ubb38DB",
+      "url": "https://api.hrfco.go.kr/${HRFCO_API_KEY}",
+      "params": {}
+    },
+    "kwater": {
+      "name": "K-water \uc218\ubb38 \uc6b4\uc601 \uc815\ubcf4",
+      "url": "https://apis.data.go.kr/B500001/dam/sluicePresentCondition/tenminlist",
+      "params": {"serviceKey": "${PUBLIC_DATA_SERVICE_KEY}", "pageNo": "1", "numOfRows": "12", "_type": "json"}
+    },
+    "ntic_cctv": {
+      "name": "ITS \uad6d\uac00\uad50\ud1b5\uc815\ubcf4\uc13c\ud130 CCTV \ud654\uc0c1\uc790\ub8cc",
+      "url": "https://openapi.its.go.kr:9443/cctvInfo",
+      "params": {"apiKey": "${ITS_CCTV_API_KEY}", "type": "its", "cctvType": "3", "getType": "json"}
+    }
+  },
+  "stations": [
+    {"id":"pilsunggyo","name":"\ud544\uc2b9\uad50","type":"river","source":"hfc","path":"waterlevel/list/10M/1021650/{start_hfc}/{end_hfc}.json","fields":{"time":["ymdhm"],"level":["wl"],"flow":["fw"]}},
+    {"id":"samicheongyo","name":"\uc0ac\ubbf8\ucc9c\uad50","type":"river","source":"hfc","path":"waterlevel/list/10M/1023662/{start_hfc}/{end_hfc}.json","fields":{"time":["ymdhm"],"level":["wl"],"flow":["fw"]}},
+    {"id":"gunnamdam","name":"\uad70\ub0a8\ud64d\uc218\uc870\uc808\uc9c0","type":"dam","source":"hfc","path":"dam/list/10M/1021701/{start_hfc}/{end_hfc}.json","fields":{"time":["ymdhm"],"level":["swl"],"inflow":["inf"],"outflow":["tototf","sfw"]}}
+  ],
+  "cctv_areas": [
+    {"id":"pilsunggyo","name":"\ud544\uc2b9\uad50 \uc778\uadfc \ub3c4\ub85c","minX":126.94,"maxX":126.98,"minY":38.09,"maxY":38.13},
+    {"id":"samicheongyo","name":"\uc0ac\ubbf8\ucc9c\uad50 \uc778\uadfc \ub3c4\ub85c","minX":126.86,"maxX":126.90,"minY":37.98,"maxY":38.03},
+    {"id":"gunnamdam","name":"\uad70\ub0a8\ub310 \uc778\uadfc \ub3c4\ub85c","minX":126.97,"maxX":127.03,"minY":38.03,"maxY":38.08},
+    {"id":"jangnam","name":"\uc5f0\ucc9c \uc7a5\ub0a8\uba74 \ub3c4\ub85c","minX":126.80,"maxX":126.91,"minY":37.95,"maxY":38.03},
+    {"id":"baekhak","name":"\uc5f0\ucc9c \ubc31\ud559\uba74 \ub3c4\ub85c","minX":126.88,"maxX":126.98,"minY":37.98,"maxY":38.08},
+    {"id":"wangjing","name":"\uc5f0\ucc9c \uc655\uc9d5\uba74 \ub3c4\ub85c","minX":126.93,"maxX":127.06,"minY":38.04,"maxY":38.13},
+    {"id":"yangju_nammyeon","name":"\uc591\uc8fc \ub0a8\uba74 \ub3c4\ub85c","minX":126.93,"maxX":127.03,"minY":37.86,"maxY":37.95}
+  ],
+  "weather_targets": [
+    {"name":"\uc5f0\ucc9c \uc7a5\ub0a8\uba74","country":"KR","code":"4180038000","lat":37.9862,"lon":126.8586},{"name":"\uc5f0\ucc9c \ubc31\ud559\uba74","country":"KR","code":"4180033000","lat":38.0292,"lon":126.9170},{"name":"\uc5f0\ucc9c \uc655\uc9d5\uba74","country":"KR","code":"4180031000","lat":38.0887,"lon":127.0049},{"name":"\uc591\uc8fc\uc2dc \ub0a8\uba74","country":"KR","code":"4163032000","lat":37.9156,"lon":126.9663},
+    {"name":"\uac1c\uc131","country":"KP","kma_station":"47070","latitude":37.97,"longitude":126.57},{"name":"\uc2e0\uacc4","country":"KP","kma_station":"47067","latitude":38.50,"longitude":126.53}
+  ],
+  "north_korea_monitoring": {"name":"\ubd81\ud55c \ud669\uac15\ub310","live_level_available":false,"message":"\uacf5\uac1c\u00b7\uac80\uc99d \uac00\ub2a5\ud55c \uc2e4\uc2dc\uac04 \uc218\uc704 \ubc0f \ubc29\ub958\ub7c9 \uc790\ub8cc \uc5c6\uc74c","proxy_indicators":["\ud544\uc2b9\uad50 \uc218\uc704\u00b7\uc720\ub7c9","\uad70\ub0a8\ud64d\uc218\uc870\uc808\uc9c0 \uc218\uc704\u00b7\uc720\uc785\ub7c9\u00b7\ubc29\ub958\ub7c9","\uac1c\uc131\u00b7\uc2e0\uacc4 \uac15\uc218 \uad00\uce21 \ubc0f \uc608\ubcf4"]}
+}

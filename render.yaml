@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: imjingang-monitor-api
+    runtime: python
+    plan: free
+    buildCommand: python -m compileall monitor.py
+    startCommand: python monitor.py
+    healthCheckPath: /health
+    envVars:
+      - key: HRFCO_API_KEY
+        sync: false
+      - key: PUBLIC_DATA_SERVICE_KEY
+        sync: false
+      - key: ITS_CCTV_API_KEY
+        sync: false
+      - key: KMA_API_KEY
+        sync: false
