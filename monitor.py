@@ -885,6 +885,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/health":
+            self.send_json(200, {"ok": True}); return
         if parsed.path == "/api/monitor":
             self.send_json(200, dashboard_data()); return
         if parsed.path == "/api/water-history":
@@ -929,7 +931,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     init_db()
     threading.Thread(target=loop, daemon=True).start()
-    print("수문 감시 서버: http://127.0.0.1:8787")
-    ThreadingHTTPServer(("127.0.0.1", 8787), Handler).serve_forever()
-
-
+    port = int(os.getenv("PORT", "8787"))
+    print(f"수문 감시 서버: http://0.0.0.0:{port}")
+    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
