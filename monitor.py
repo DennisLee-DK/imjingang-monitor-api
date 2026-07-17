@@ -786,7 +786,12 @@ def loop() -> None:
     while True:
         try:
             collect_once()
-            interval = int(load_config().get("poll_interval_seconds", 600))
+            # 외부 제공기관이 지연되어도 /api/monitor 요청은 즉시 응답하도록
+            # 날씨와 CCTV 갱신은 수집 스레드에서만 수행한다.
+            config = load_config()
+            weather_data(config)
+            cctv_data(config)
+            interval = int(config.get("poll_interval_seconds", 600))
         except Exception as exc:
             with LOCK:
                 LAST_RESULT.update({"updated_at": datetime.now().isoformat(timespec="seconds"), "errors": [{"station": "서버", "message": str(exc)}]})
@@ -841,11 +846,22 @@ def dashboard_data() -> dict[str, Any]:
                 status = persisted_status
         except (OSError, json.JSONDecodeError):
             pass
+    with LOCK:
+        weather = {
+            "areas": list(WEATHER_CACHE["areas"]),
+            "errors": list(WEATHER_CACHE["errors"]),
+            "updated_at": datetime.fromtimestamp(WEATHER_CACHE["fetched_at"]).isoformat(timespec="seconds") if WEATHER_CACHE["fetched_at"] else None,
+        }
+        cctv = {
+            "areas": list(CCTV_CACHE["areas"]),
+            "errors": list(CCTV_CACHE["errors"]),
+            "updated_at": datetime.fromtimestamp(CCTV_CACHE["fetched_at"]).isoformat(timespec="seconds") if CCTV_CACHE["fetched_at"] else None,
+        }
     return {
         "stations": result,
         "status": status,
-        "weather": weather_data(config),
-        "cctv": cctv_data(config),
+        "weather": weather,
+        "cctv": cctv,
         "configured": CONFIG_PATH.exists(),
     }
 
