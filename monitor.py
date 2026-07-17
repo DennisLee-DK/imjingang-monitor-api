@@ -10,6 +10,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -191,7 +192,8 @@ def request_json(source: dict[str, Any], station: dict[str, Any]) -> Any:
         raise RuntimeError("필요한 API 인증키가 설정되지 않았습니다")
     separator = "&" if "?" in url else "?"
     request_url = url + separator + urllib.parse.urlencode(params)
-    with urllib.request.urlopen(request_url, timeout=20) as response:
+    timeout_seconds = float(source.get("timeout_seconds", 20))
+    with urllib.request.urlopen(request_url, timeout=timeout_seconds) as response:
         raw = response.read().decode("utf-8")
     try:
         payload = json.loads(raw)
@@ -299,20 +301,31 @@ def fetch_cctv_areas(config: dict[str, Any]) -> tuple[list[dict[str, Any]], list
         return [], [{"station": "CCTV", "message": "CCTV 제공원 설정이 없습니다"}]
     water_ids = {"pilsunggyo", "samicheongyo", "gunnamdam"}
     areas, errors = [], []
-    for area in config.get("cctv_areas", []):
+
+    def fetch_area(area: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, str] | None]:
         try:
             station = {"params": {"minX": area["minX"], "maxX": area["maxX"], "minY": area["minY"], "maxY": area["maxY"]}}
-            records = cctv_records(request_json(source, station))
-            selected_records = records
+            # ITS가 지연되어도 전체 대시보드가 멈추지 않게 구역을 병렬로 짧게 조회한다.
+            cctv_source = {**source, "timeout_seconds": 8}
+            records = cctv_records(request_json(cctv_source, station))
             cameras = []
-            for item in selected_records[:4]:
+            for item in records[:4]:
                 url = find_value(item, ["cctvurl"])
                 if url:
                     cameras.append({"name": str(find_value(item, ["cctvname"]) or "도로 CCTV"), "url": str(url), "updated": str(find_value(item, ["filecreatetime"]) or "")})
             if cameras:
-                areas.append({"id": area["id"], "name": CCTV_AREA_LABELS.get(area["id"], area["name"]), "kind": "water" if area["id"] in water_ids else "road", "cameras": cameras})
+                return {"id": area["id"], "name": CCTV_AREA_LABELS.get(area["id"], area["name"]), "kind": "water" if area["id"] in water_ids else "road", "cameras": cameras}, None
         except Exception as exc:
-            errors.append({"station": area["name"], "message": str(exc)})
+            return None, {"station": area["name"], "message": str(exc)}
+        return None, None
+
+    configured_areas = config.get("cctv_areas", [])
+    with ThreadPoolExecutor(max_workers=min(7, max(1, len(configured_areas)))) as executor:
+        for result, error in executor.map(fetch_area, configured_areas):
+            if result:
+                areas.append(result)
+            if error:
+                errors.append(error)
     return areas, errors
 
 
