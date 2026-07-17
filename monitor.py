@@ -305,8 +305,9 @@ def fetch_cctv_areas(config: dict[str, Any]) -> tuple[list[dict[str, Any]], list
     def fetch_area(area: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, str] | None]:
         try:
             station = {"params": {"minX": area["minX"], "maxX": area["maxX"], "minY": area["minY"], "maxY": area["maxY"]}}
-            # ITS가 지연되어도 전체 대시보드가 멈추지 않게 구역을 병렬로 짧게 조회한다.
-            cctv_source = {**source, "timeout_seconds": 8}
+            # 화면 API와 분리된 백그라운드 수집이므로 ITS의 최신 정지화상 응답에는
+            # 충분한 여유를 주되, 모든 구역은 병렬로 조회한다.
+            cctv_source = {**source, "timeout_seconds": 35}
             records = cctv_records(request_json(cctv_source, station))
             cameras = []
             for item in records[:4]:
