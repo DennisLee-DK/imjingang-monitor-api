@@ -30,7 +30,7 @@
     {"id":"jangnam","name":"\uc5f0\ucc9c \uc7a5\ub0a8\uba74 \ub3c4\ub85c","minX":126.80,"maxX":126.91,"minY":37.95,"maxY":38.03},
     {"id":"baekhak","name":"\uc5f0\ucc9c \ubc31\ud559\uba74 \ub3c4\ub85c","minX":126.88,"maxX":126.98,"minY":37.98,"maxY":38.08},
     {"id":"wangjing","name":"\uc5f0\ucc9c \uc655\uc9d5\uba74 \ub3c4\ub85c","minX":126.93,"maxX":127.06,"minY":38.04,"maxY":38.13},
-    {"id":"yangju_nammyeon","name":"\uc591\uc8fc \ub0a8\uba74 \ub3c4\ub85c","minX":126.93,"maxX":127.03,"minY":37.86,"maxY":37.95}
+    {"id":"yangju_nammyeon","name":"\uc591\uc8fc \ub0a8\uba74 \ub3c4\ub85c","minX":127.02,"maxX":127.08,"minY":37.85,"maxY":37.92}
   ],
   "weather_targets": [
     {"name":"\uc5f0\ucc9c \uc7a5\ub0a8\uba74","country":"KR","code":"4180038000","lat":37.9862,"lon":126.8586},{"name":"\uc5f0\ucc9c \ubc31\ud559\uba74","country":"KR","code":"4180033000","lat":38.0292,"lon":126.9170},{"name":"\uc5f0\ucc9c \uc655\uc9d5\uba74","country":"KR","code":"4180031000","lat":38.0887,"lon":127.0049},{"name":"\uc591\uc8fc\uc2dc \ub0a8\uba74","country":"KR","code":"4163032000","lat":37.9156,"lon":126.9663},
