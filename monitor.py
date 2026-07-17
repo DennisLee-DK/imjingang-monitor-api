@@ -27,6 +27,15 @@ LOCK = threading.Lock()
 LAST_RESULT: dict[str, Any] = {"updated_at": None, "errors": []}
 CCTV_CACHE: dict[str, Any] = {"fetched_at": 0.0, "areas": [], "errors": []}
 WEATHER_CACHE: dict[str, Any] = {"fetched_at": 0.0, "areas": [], "errors": []}
+CCTV_AREA_LABELS = {
+    "pilsunggyo": "\ud544\uc2b9\uad50 \uc218\ubb38 \uc778\uadfc CCTV",
+    "samicheongyo": "\uc0ac\ubbf8\ucc9c\uad50 \uc218\ubb38 \uc778\uadfc CCTV",
+    "gunnamdam": "\uad70\ub0a8\ub310 \uc218\ubb38 \uc778\uadfc CCTV",
+    "jangnam": "\uc5f0\ucc9c\uad70 \uc7a5\ub0a8\uba74 \uc77c\ub300 CCTV",
+    "baekhak": "\uc5f0\ucc9c\uad70 \ubc31\ud559\uba74 \uc77c\ub300 CCTV",
+    "wangjing": "\uc5f0\ucc9c\uad70 \uc655\uc9d5\uba74 \uc77c\ub300 CCTV",
+    "yangju_nammyeon": "\uc591\uc8fc\uc2dc \ub0a8\uba74 \uc77c\ub300 CCTV",
+}
 
 
 def load_config() -> dict[str, Any]:
@@ -288,28 +297,20 @@ def fetch_cctv_areas(config: dict[str, Any]) -> tuple[list[dict[str, Any]], list
     source = config["sources"].get("ntic_cctv")
     if not source:
         return [], [{"station": "CCTV", "message": "CCTV 제공원 설정이 없습니다"}]
-    labels = {
-        "pilsunggyo": "\ud544\uc2b9\uad50 \uc218\ubb38 \uc778\uadfc CCTV",
-        "samicheongyo": "\uc0ac\ubbf8\ucc9c\uad50 \uc218\ubb38 \uc778\uadfc CCTV",
-        "gunnamdam": "\uad70\ub0a8\ub310 \uc218\ubb38 \uc778\uadfc CCTV",
-        "jangnam": "\uc5f0\ucc9c \uc7a5\ub0a8\uba74 \uac00\uc6d4\uad50\ucc28\ub85c CCTV",
-        "baekhak": "\uc5f0\ucc9c \ubc31\ud559\uba74 \uba74\ub0b4 \ub3c4\ub85c CCTV",
-        "wangjing": "\uc5f0\ucc9c \uc655\uc9d5\uba74 \uc740\ub300\uad50\ucc28\ub85c CCTV",
-        "yangju_nammyeon": "\uc591\uc8fc\uc2dc \ub0a8\uba74 \uc0c1\uc218\uc0ac\uac70\ub9ac CCTV",
-    }
     water_ids = {"pilsunggyo", "samicheongyo", "gunnamdam"}
     areas, errors = [], []
     for area in config.get("cctv_areas", []):
         try:
             station = {"params": {"minX": area["minX"], "maxX": area["maxX"], "minY": area["minY"], "maxY": area["maxY"]}}
             records = cctv_records(request_json(source, station))
+            selected_records = records
             cameras = []
-            for item in records[:4]:
+            for item in selected_records[:4]:
                 url = find_value(item, ["cctvurl"])
                 if url:
                     cameras.append({"name": str(find_value(item, ["cctvname"]) or "도로 CCTV"), "url": str(url), "updated": str(find_value(item, ["filecreatetime"]) or "")})
             if cameras:
-                areas.append({"id": area["id"], "name": labels.get(area["id"], area["name"]), "kind": "water" if area["id"] in water_ids else "road", "cameras": cameras})
+                areas.append({"id": area["id"], "name": CCTV_AREA_LABELS.get(area["id"], area["name"]), "kind": "water" if area["id"] in water_ids else "road", "cameras": cameras})
         except Exception as exc:
             errors.append({"station": area["name"], "message": str(exc)})
     return areas, errors
@@ -327,6 +328,8 @@ def cctv_data(config: dict[str, Any]) -> dict[str, Any]:
                 persisted = json.loads(CCTV_CACHE_PATH.read_text(encoding="utf-8"))
                 cached_areas = persisted.get("areas", [])
                 if cached_areas:
+                    for area in cached_areas:
+                        area["name"] = CCTV_AREA_LABELS.get(str(area.get("id") or ""), area.get("name"))
                     areas = cached_areas
                     errors = []
             except (OSError, json.JSONDecodeError):
@@ -370,6 +373,44 @@ def weekly_observed_rain(target_id: str, week_start: datetime) -> dict[str, floa
             FROM weather_observations WHERE target_id=? AND observed_hour>=? AND observed_hour<?
             GROUP BY substr(observed_hour, 1, 10)""", (target_id, begin, end)).fetchall()
     return {str(day): float(rain) for day, rain in rows}
+
+
+ASOS_RAIN_CACHE: dict[str, Any] = {"fetched_at": 0.0, "days": {}}
+
+
+def asos_daily_rain(auth_key: str, station: str = "98") -> dict[str, float]:
+    """Return recent ASOS daily rainfall (RN_DAY) for the nearest local station."""
+    if not auth_key:
+        return {}
+    if time.time() - float(ASOS_RAIN_CACHE["fetched_at"]) < 600:
+        return dict(ASOS_RAIN_CACHE["days"])
+    today = datetime.now().date()
+    result: dict[str, float] = {}
+    for offset in range(6, -1, -1):
+        day = today - timedelta(days=offset)
+        params = urllib.parse.urlencode({"tm": day.strftime("%Y%m%d"), "stn": station,
+            "help": "1", "authKey": auth_key})
+        url = "https://apihub.kma.go.kr/api/typ01/url/kma_sfcdd.php?" + params
+        try:
+            with urllib.request.urlopen(url, timeout=20) as response:
+                lines = response.read().decode("utf-8", errors="replace").splitlines()
+            record = next((line.strip() for line in lines if re.match(r"^\d{8},", line.strip())), "")
+            values = record.split(",")
+            if len(values) > 38:
+                rain = as_float(values[38])
+                if rain is not None and rain >= 0:
+                    result[day.isoformat()] = round(rain, 1)
+        except Exception:
+            continue
+    if result:
+        ASOS_RAIN_CACHE.update({"fetched_at": time.time(), "days": result})
+    return result
+
+
+def merged_observed_rain(target_id: str, week_start: datetime, auth_key: str) -> dict[str, float]:
+    observed = weekly_observed_rain(target_id, week_start)
+    observed.update(asos_daily_rain(auth_key))
+    return observed
 
 
 def kma_grid(lat: float, lon: float) -> tuple[int, int]:
@@ -460,7 +501,7 @@ def build_weather_result(target: dict[str, Any], rows: list[dict[str, Any]]) -> 
     today = datetime.now().date()
     week_start = today - timedelta(days=today.weekday())
     target_id = str(target.get("code") or target.get("kma_station") or target["name"])
-    observed = weekly_observed_rain(target_id, week_start)
+    observed = merged_observed_rain(target_id, week_start, str(load_config().get("kma_api_key") or ""))
     days = []
     forecast_cumulative = observed_cumulative = 0.0
     for offset in range(7):
@@ -519,7 +560,7 @@ def kma_web_weather(target: dict[str, Any]) -> dict[str, Any]:
         forecast_days[date] = {"date": date, "rain": round(sum(item["rain"] for item in daily), 1), "low": min(item["temp"] for item in daily), "high": max(item["temp"] for item in daily), "phases": phases, "available": True}
     today = datetime.now().date()
     week_start = today - timedelta(days=today.weekday())
-    observed = weekly_observed_rain(target["code"], week_start)
+    observed = merged_observed_rain(target["code"], week_start, str(load_config().get("kma_api_key") or ""))
     days = []
     for offset in range(7):
         date = (week_start + timedelta(days=offset)).isoformat()
@@ -593,10 +634,12 @@ def kma_north_public_current(station: str) -> dict[str, Any] | None:
 
 
 def coordinate_weather_fallback(target: dict[str, Any]) -> dict[str, Any] | None:
-    """Use the requested fallback county coordinates only when KMA's station feed is unavailable."""
-    if not target.get("fallback_name"):
+    """Use a global weather-model fallback when a North Korean station feed is unavailable."""
+    latitude = target.get("fallback_latitude", target.get("latitude"))
+    longitude = target.get("fallback_longitude", target.get("longitude"))
+    if latitude is None or longitude is None:
         return None
-    params = urllib.parse.urlencode({"latitude": target["fallback_latitude"], "longitude": target["fallback_longitude"],
+    params = urllib.parse.urlencode({"latitude": latitude, "longitude": longitude,
         "hourly": "temperature_2m,precipitation,precipitation_probability,weather_code",
         "timezone": "Asia/Seoul", "forecast_days": 3})
     with urllib.request.urlopen("https://api.open-meteo.com/v1/forecast?" + params, timeout=30) as response:
@@ -613,11 +656,17 @@ def coordinate_weather_fallback(target: dict[str, Any]) -> dict[str, Any] | None
             "weather": weather_names.get(int(hourly.get("weather_code", [0] * len(hourly["time"]))[index] or 0), "-" )})
     if not rows:
         return None
-    fallback_target = dict(target, name=str(target["fallback_name"]))
+    fallback_name = str(target.get("fallback_name") or target["name"])
+    fallback_target = dict(target, name=fallback_name)
     result = build_weather_result(fallback_target, rows)
-    result["name"] = f"신계군 · {target['fallback_name']} 대체"
-    result["source"] = "토산군 좌표 기반 예보(Open-Meteo)"
-    result["forecast_notice"] = "신계군 기상청 관측 미수신 시 토산군 대체 예보"
+    if target.get("fallback_name"):
+        result["name"] = f"신계군 · {fallback_name} 대체"
+        result["source"] = "토산군 좌표 기반 세계날씨 예보(Open-Meteo)"
+        result["forecast_notice"] = "신계군 기상청 관측 미수신 시 토산군 대체 예보"
+    else:
+        result["name"] = str(target["name"])
+        result["source"] = "개성 좌표 기반 세계날씨 예보(Open-Meteo)"
+        result["forecast_notice"] = "기상청 북한 GTS 관측 미수신 시 세계날씨 예보로 보완"
     return result
 
 
@@ -625,7 +674,7 @@ def kma_north_weather(target: dict[str, Any], auth_key: str) -> dict[str, Any]:
     """Load KMA GTS/SYNOP observations for a North Korean station."""
     station = str(target["kma_station"])
     today = datetime.now().date()
-    station_names = {"47070": "개성", "47067": "신계군"}
+    station_names = {"47070": "황해도 개성시", "47067": "신계군"}
     result = {"name": station_names.get(station, target["name"]), "today_date": today.isoformat(), "today": [],
         "days": empty_weather_days(station), "source": "기상청 북한기상관측(GTS/SYNOP)",
         "forecast_notice": "북한 지점 관측자료 · 지점별 시간예보 미제공"}
@@ -682,13 +731,12 @@ def kma_north_weather(target: dict[str, Any], auth_key: str) -> dict[str, Any]:
                 result["forecast_notice"] = "기상청 공개 실황 보완 · 북한 GTS API 활용승인 필요"
         except Exception:
             pass
-        if not result["today"]:
-            try:
-                fallback = coordinate_weather_fallback(target)
-                if fallback:
-                    return fallback
-            except Exception:
-                pass
+        try:
+            fallback = coordinate_weather_fallback(target)
+            if fallback:
+                return fallback
+        except Exception:
+            pass
     return result
 
 
@@ -826,23 +874,17 @@ def water_history_data(start_text: str, end_text: str) -> dict[str, Any]:
         "source": "한강홍수통제소 표준수문DB"}
 
 
-HTML = (ROOT / "static" / "index.html").read_text(encoding="utf-8") if (ROOT / "static" / "index.html").exists() else ""
-
-
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status: int, value: dict[str, Any]) -> None:
         body = json.dumps(value, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", "https://dennislee-dk.github.io")
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/health":
-            self.send_json(200, {"ok": True}); return
         if parsed.path == "/api/monitor":
             self.send_json(200, dashboard_data()); return
         if parsed.path == "/api/water-history":
@@ -856,12 +898,29 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(502, {"error": str(exc)})
             return
         if parsed.path in ("/", "/index.html"):
-            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.end_headers(); self.wfile.write(HTML.encode()); return
+            html_path = ROOT / "static" / "index.html"
+            html = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Cache-Control", "no-store"); self.end_headers(); self.wfile.write(html.encode()); return
         self.send_error(404)
 
     def do_POST(self) -> None:
-        # Public clients must never submit or update API credentials.
-        self.send_error(405)
+        if self.path not in ("/api/hfc-key", "/api/public-data-key", "/api/its-cctv-key"):
+            self.send_error(404); return
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+            if size > 4096:
+                raise ValueError("INVALID_HFC_KEY")
+            data = json.loads(self.rfile.read(size).decode("utf-8"))
+            if self.path == "/api/hfc-key":
+                save_hfc_key(str(data.get("key", "")))
+            elif self.path == "/api/public-data-key":
+                save_public_data_key(str(data.get("key", "")))
+            else:
+                save_its_cctv_key(str(data.get("key", "")))
+            threading.Thread(target=collect_once, daemon=True).start()
+            self.send_json(200, {"ok": True})
+        except (ValueError, json.JSONDecodeError):
+            self.send_json(400, {"ok": False, "error": "INVALID_API_KEY"})
 
     def log_message(self, *_: Any) -> None:
         return
@@ -870,6 +929,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     init_db()
     threading.Thread(target=loop, daemon=True).start()
-    port = int(os.getenv("PORT", "8787"))
-    print(f"Monitoring API: http://0.0.0.0:{port}")
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    print("수문 감시 서버: http://127.0.0.1:8787")
+    ThreadingHTTPServer(("127.0.0.1", 8787), Handler).serve_forever()
+
+
