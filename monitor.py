@@ -432,9 +432,13 @@ def asos_daily_rain(auth_key: str, station: str) -> dict[str, float]:
 
 def merged_observed_rain(target: dict[str, Any], week_start: datetime, auth_key: str) -> dict[str, float]:
     target_id = str(target.get("code") or target.get("kma_station") or target["name"])
-    # Weekly totals are calculated only from the weather service's own
-    # point observations, never from a nearby station's substituted value.
-    return weekly_observed_rain(target_id, week_start)
+    # The point page provides the latest hourly observation, but it cannot
+    # backfill days before this dashboard started.  Complete the current week
+    # with KMA's official daily ASOS observation feed, retaining point values
+    # only when the daily record is not published yet.
+    point_days = weekly_observed_rain(target_id, week_start)
+    daily_days = asos_daily_rain(auth_key, str(target.get("asos_station") or ""))
+    return {**point_days, **daily_days}
 
 
 def kma_grid(lat: float, lon: float) -> tuple[int, int]:
