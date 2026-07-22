@@ -389,15 +389,16 @@ def weekly_observed_rain(target_id: str, week_start: datetime) -> dict[str, floa
     return {str(day): float(rain) for day, rain in rows}
 
 
-ASOS_RAIN_CACHE: dict[str, Any] = {"fetched_at": 0.0, "days": {}}
+ASOS_RAIN_CACHE: dict[str, dict[str, Any]] = {}
 
 
-def asos_daily_rain(auth_key: str, station: str = "98") -> dict[str, float]:
+def asos_daily_rain(auth_key: str, station: str) -> dict[str, float]:
     """Return recent ASOS daily rainfall (RN_DAY) for the nearest local station."""
-    if not auth_key:
+    if not auth_key or not station:
         return {}
-    if time.time() - float(ASOS_RAIN_CACHE["fetched_at"]) < 600:
-        return dict(ASOS_RAIN_CACHE["days"])
+    cached = ASOS_RAIN_CACHE.get(str(station), {"fetched_at": 0.0, "days": {}})
+    if time.time() - float(cached["fetched_at"]) < 600:
+        return dict(cached["days"])
     today = datetime.now().date()
     result: dict[str, float] = {}
     for offset in range(6, -1, -1):
@@ -417,13 +418,17 @@ def asos_daily_rain(auth_key: str, station: str = "98") -> dict[str, float]:
         except Exception:
             continue
     if result:
-        ASOS_RAIN_CACHE.update({"fetched_at": time.time(), "days": result})
+        ASOS_RAIN_CACHE[str(station)] = {"fetched_at": time.time(), "days": result}
     return result
 
 
-def merged_observed_rain(target_id: str, week_start: datetime, auth_key: str) -> dict[str, float]:
+def merged_observed_rain(target: dict[str, Any], week_start: datetime, auth_key: str) -> dict[str, float]:
+    target_id = str(target.get("code") or target.get("kma_station") or target["name"])
     observed = weekly_observed_rain(target_id, week_start)
-    observed.update(asos_daily_rain(auth_key))
+    # Do not overwrite point-specific observations with one shared ASOS station.
+    # Each local target uses its nearest configured official station only to fill missing days.
+    for day, rain in asos_daily_rain(auth_key, str(target.get("asos_station") or "")).items():
+        observed.setdefault(day, rain)
     return observed
 
 
@@ -515,7 +520,7 @@ def build_weather_result(target: dict[str, Any], rows: list[dict[str, Any]]) -> 
     today = datetime.now().date()
     week_start = today - timedelta(days=today.weekday())
     target_id = str(target.get("code") or target.get("kma_station") or target["name"])
-    observed = merged_observed_rain(target_id, week_start, str(load_config().get("kma_api_key") or ""))
+    observed = merged_observed_rain(target, week_start, str(load_config().get("kma_api_key") or ""))
     days = []
     forecast_cumulative = observed_cumulative = 0.0
     for offset in range(7):
@@ -574,7 +579,7 @@ def kma_web_weather(target: dict[str, Any]) -> dict[str, Any]:
         forecast_days[date] = {"date": date, "rain": round(sum(item["rain"] for item in daily), 1), "low": min(item["temp"] for item in daily), "high": max(item["temp"] for item in daily), "phases": phases, "available": True}
     today = datetime.now().date()
     week_start = today - timedelta(days=today.weekday())
-    observed = merged_observed_rain(target["code"], week_start, str(load_config().get("kma_api_key") or ""))
+    observed = merged_observed_rain(target, week_start, str(load_config().get("kma_api_key") or ""))
     days = []
     for offset in range(7):
         date = (week_start + timedelta(days=offset)).isoformat()
