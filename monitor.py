@@ -366,7 +366,9 @@ def kma_observed_rain(target: dict[str, Any]) -> tuple[str, float]:
         raw = response.read()
     page = raw.decode("euc-kr", errors="replace")
     block = re.search(r'<div class="now_weather1".*?</div>', page, re.S)
-    values = re.findall(r'<dd class="now_weather1_center[^>]*">(.*?)</dd>', block.group(0) if block else "", re.S)
+    # The KMA page exposes the current point's 1-hour rainfall as the final
+    # `now_weather1_right` value.  Do not fall back to a different station.
+    values = re.findall(r'<dd class="now_weather1_right[^>]*">(.*?)</dd>', block.group(0) if block else "", re.S)
     rain_text = strip_tags(values[-1]).replace("mm", "").strip() if values else ""
     rain = 0.0 if rain_text in ("", "-", "&nbsp;") else as_float(rain_text)
     if rain is None:
@@ -424,12 +426,9 @@ def asos_daily_rain(auth_key: str, station: str) -> dict[str, float]:
 
 def merged_observed_rain(target: dict[str, Any], week_start: datetime, auth_key: str) -> dict[str, float]:
     target_id = str(target.get("code") or target.get("kma_station") or target["name"])
-    observed = weekly_observed_rain(target_id, week_start)
-    # Do not overwrite point-specific observations with one shared ASOS station.
-    # Each local target uses its nearest configured official station only to fill missing days.
-    for day, rain in asos_daily_rain(auth_key, str(target.get("asos_station") or "")).items():
-        observed.setdefault(day, rain)
-    return observed
+    # Weekly totals are calculated only from the weather service's own
+    # point observations, never from a nearby station's substituted value.
+    return weekly_observed_rain(target_id, week_start)
 
 
 def kma_grid(lat: float, lon: float) -> tuple[int, int]:
