@@ -23,7 +23,7 @@
     {"id":"samicheongyo","name":"\uc0ac\ubbf8\ucc9c\uad50","type":"river","source":"hfc","path":"waterlevel/list/10M/1023662/{start_hfc}/{end_hfc}.json","fields":{"time":["ymdhm"],"level":["wl"],"flow":["fw"]}},
     {"id":"gunnamdam","name":"\uad70\ub0a8\ud64d\uc218\uc870\uc808\uc9c0","type":"dam","source":"hfc","path":"dam/list/10M/1021701/{start_hfc}/{end_hfc}.json","fields":{"time":["ymdhm"],"level":["swl"],"inflow":["inf"],"outflow":["tototf","sfw"]}},
     {"id":"biryongdaegyo","name":"\ube44\ub8e1\ub300\uad50","type":"river","source":"hfc","path":"waterlevel/list/10M/1023660/{start_hfc}/{end_hfc}.json","fields":{"time":["ymdhm"],"level":["wl"],"flow":["fw"]}},
-    {"id":"jeonjinbridge","name":"\uc804\uc9c4\uad50 (\ube44\ub8e1\ub300\uad50 \uad00\uce21\uac12 \ucc38\uc870)","type":"river","source":"hfc","path":"waterlevel/list/10M/1023660/{start_hfc}/{end_hfc}.json","fields":{"time":["ymdhm"],"level":["wl"],"flow":["fw"]}}
+    {"id":"jeonjinbridge","name":"\uc804\uc9c4\uad50","type":"river","source":"hfc","path":"waterlevel/list/10M/1023667/{start_hfc}/{end_hfc}.json","fields":{"time":["ymdhm"],"level":["wl"],"flow":["fw"]}}
   ],
   "cctv_areas": [
     {"id":"pilsunggyo","name":"\ud544\uc2b9\uad50 \uc778\uadfc \ub3c4\ub85c","minX":126.94,"maxX":126.98,"minY":38.09,"maxY":38.13},
