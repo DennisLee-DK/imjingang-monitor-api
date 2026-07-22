@@ -238,6 +238,12 @@ def normalize_all(station: dict[str, Any], payload: Any) -> list[dict[str, Any]]
     return [normalize(station, candidate) for candidate in candidates]
 
 
+def is_half_hour_observation(row: dict[str, Any]) -> bool:
+    """Keep the 00- and 30-minute records from the 10-minute source data."""
+    observed = re.sub(r"[^0-9]", "", str(row.get("observed_at", "")))
+    return len(observed) < 12 or observed[10:12] in ("00", "30")
+
+
 def needs_hfc_history(station_id: str) -> bool:
     with sqlite3.connect(DB_PATH) as conn:
         count = conn.execute("SELECT COUNT(*) FROM readings WHERE station_id=? AND level IS NOT NULL", (station_id,)).fetchone()[0]
@@ -265,7 +271,7 @@ def collect_once() -> None:
                 if source_id == "hfc" and needs_hfc_history(station["id"]):
                     request_station["path"] = str(station.get("path", "")).replace("{start_hfc}", "{start_hfc_week}")
                 payload = request_json(source, request_station)
-                rows.extend(normalize_all(station, payload))
+                rows.extend(row for row in normalize_all(station, payload) if is_half_hour_observation(row))
                 break
             except Exception as exc:  # 개별 지점 오류가 다른 지점 수집을 막지 않게 한다.
                 station_errors.append(str(exc))
@@ -824,6 +830,7 @@ def dashboard_data() -> dict[str, Any]:
                 AND (level IS NOT NULL OR flow IS NOT NULL OR inflow IS NOT NULL OR outflow IS NOT NULL)
                 ORDER BY observed_at DESC LIMIT 1008""", (station["id"],))]
             rows.reverse()
+            rows = [row for row in rows if is_half_hour_observation(row)]
             latest = rows[-1] if rows else None
             metrics = ["level", "flow"] if station["type"] == "river" else ["level", "inflow", "outflow"]
             changes = {}
@@ -831,16 +838,12 @@ def dashboard_data() -> dict[str, Any]:
                 values = [row[metric] for row in rows]
                 changes[metric] = {
                     "ten_min": None if len(values) < 2 or values[-1] is None or values[-2] is None else round(values[-1] - values[-2], 3),
-                    "one_hour": None if len(values) < 7 or values[-1] is None or values[-7] is None else round(values[-1] - values[-7], 3),
-                    "trend": trend(values[-4:]),
+                    "one_hour": None if len(values) < 3 or values[-1] is None or values[-3] is None else round(values[-1] - values[-3], 3),
+                    "trend": trend(values[-3:]),
                 }
-            hourly_history = []
-            seen_hours = set()
-            for row in rows:
-                hour = str(row["observed_at"])[:10]
-                if hour not in seen_hours:
-                    hourly_history.append(row)
-                    seen_hours.add(hour)
+            # Field name is retained for the existing frontend contract, but these
+            # are now the 00- and 30-minute records rather than hourly samples.
+            hourly_history = list(rows)
             result.append({"id": station["id"], "name": station["name"], "type": station["type"], "latest": latest, "history": rows, "hourly_history": hourly_history, "changes": changes})
     with LOCK:
         status = dict(LAST_RESULT)
@@ -893,17 +896,19 @@ def water_history_data(start_text: str, end_text: str) -> dict[str, Any]:
                 "{start_hfc}", cursor.strftime("%Y%m%d%H%M")).replace(
                 "{end_hfc}", chunk_end.strftime("%Y%m%d%H%M"))
             payload = request_json(source, request_station)
-            collected.extend(normalize_all(station, payload))
+            collected.extend(row for row in normalize_all(station, payload) if is_half_hour_observation(row))
             cursor = chunk_end + timedelta(minutes=10)
-        hourly: dict[str, dict[str, Any]] = {}
+        half_hourly: dict[str, dict[str, Any]] = {}
         for row in collected:
             observed = re.sub(r"[^0-9]", "", str(row.get("observed_at", "")))
             if len(observed) < 10 or row.get("level") is None:
                 continue
-            hour = observed[:10]
-            hourly[hour] = {"observed_at": hour, "level": row["level"]}
+            if not is_half_hour_observation(row):
+                continue
+            stamp = observed[:12]
+            half_hourly[stamp] = {"observed_at": stamp, "level": row["level"]}
         stations.append({"id": station["id"], "name": station["name"],
-            "history": sorted(hourly.values(), key=lambda row: row["observed_at"])})
+            "history": sorted(half_hourly.values(), key=lambda row: row["observed_at"])})
     return {"start": start_text, "end": end_text, "stations": stations,
         "source": "한강홍수통제소 표준수문DB"}
 
